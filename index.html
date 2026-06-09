@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ホテルジュン 料金シミュレーター</title>
+<style>
+  :root{ --maroon:#5a1a1a; --maroon2:#7a2424; --bg:#f4f4f4; --line:#e3e3e3; }
+  *{ box-sizing:border-box; }
+  body{ font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; background:var(--bg); color:#222; margin:0; padding:24px; }
+  .wrap{ max-width:760px; margin:0 auto; }
+  h1{ font-size:20px; color:var(--maroon); text-align:center; margin:8px 0 20px; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .row{ display:flex; border-bottom:1px solid var(--line); }
+  .row:last-child{ border-bottom:none; }
+  .row label{ width:170px; min-width:170px; background:var(--maroon); color:#fff; display:flex; align-items:center; padding:16px; font-size:15px; }
+  .row .field{ flex:1; display:flex; align-items:center; padding:10px 16px; }
+  select,input[type=date]{ width:100%; max-width:340px; padding:10px; font-size:16px; border:1px solid #ccc; border-radius:4px; background:#fff; }
+  .btn{ display:block; margin:22px auto; background:var(--maroon); color:#fff; border:none; padding:14px 48px; font-size:17px; border-radius:4px; cursor:pointer; }
+  .btn:hover{ background:var(--maroon2); }
+  .note{ color:#666; font-size:12px; margin-left:8px; }
+  .result{ margin-top:8px; }
+  .price-row label{ background:var(--maroon); }
+  .price{ font-size:30px; color:var(--maroon); font-weight:bold; }
+  .plan{ font-size:16px; }
+  .applied{ font-size:13px; color:#555; padding:10px 16px; background:#faf6f6; border-bottom:1px solid var(--line); }
+  table.bd{ width:100%; border-collapse:collapse; font-size:14px; }
+  table.bd th,table.bd td{ border:1px solid var(--line); padding:8px 10px; text-align:left; }
+  table.bd th{ background:#f0e9e9; }
+  table.bd td.num{ text-align:right; }
+  .mode{ display:inline-block; font-size:11px; color:#fff; background:#9a6a6a; border-radius:3px; padding:1px 6px; margin-left:6px; }
+  .hint{ font-size:12px; color:#777; margin-top:14px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ホテルジュン 料金シミュレーター</h1>
+
+  <div class="card">
+    <div class="row"><label>入室予定（営業日）</label><div class="field"><input type="date" id="date"></div></div>
+    <div class="row"><label>入室時間</label><div class="field"><select id="time"></select><span class="note">深夜は 24:00=翌0:00 表記</span></div></div>
+    <div class="row"><label>ルームタイプ</label><div class="field"><select id="rank"></select></div></div>
+    <div class="row"><label>滞在時間</label><div class="field"><select id="hours"></select></div></div>
+  </div>
+
+  <button class="btn" id="go">調べる ▼</button>
+
+  <div class="card result" id="result" style="display:none">
+    <div class="applied" id="applied"></div>
+    <div class="row price-row"><label>料金</label><div class="field"><span class="price" id="price"></span></div></div>
+    <div class="row"><label>プラン</label><div class="field"><span class="plan" id="plan"></span></div></div>
+  </div>
+  <div id="bdwrap" style="display:none; margin-top:10px;">
+    <table class="bd" id="bd"><thead><tr><th>項目</th><th>単価</th><th>数量</th><th>小計</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="hint">
+    ※ 料金は室料のみ（3%奉仕料・人員割増・会員割引は含みません）。<br>
+    ※ 営業日は毎日5:55で切り替わります。日をまたぐ場合、宿泊は入室日の区分、5:55以降の延長・休憩は翌日の区分で計算します。<br>
+    ※ 入室時間が24:00以降は「翌日の早朝」を表します（例：26:00＝翌2:00）。
+  </div>
+</div>
+
+<script>
+/* ===== 祝日判定（依存なし） ===== */
+function nthMonday(y,m,nth){ const f=new Date(y,m-1,1).getDay(); const off=(1-f+7)%7; return 1+off+(nth-1)*7; }
+function shunbun(y){ return Math.floor(20.8431+0.242194*(y-1980)-Math.floor((y-1980)/4)); }
+function shubun(y){ return Math.floor(23.2488+0.242194*(y-1980)-Math.floor((y-1980)/4)); }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function primaryHoliday(d){ const y=d.getFullYear(),m=d.getMonth()+1,dd=d.getDate();
+  if(m===1&&dd===1)return'元日'; if(m===1&&dd===nthMonday(y,1,2))return'成人の日';
+  if(m===2&&dd===11)return'建国記念の日'; if(m===2&&dd===23&&y>=2020)return'天皇誕生日';
+  if(m===3&&dd===shunbun(y))return'春分の日'; if(m===4&&dd===29)return'昭和の日';
+  if(m===5&&dd===3)return'憲法記念日'; if(m===5&&dd===4)return'みどりの日'; if(m===5&&dd===5)return'こどもの日';
+  if(m===7&&dd===nthMonday(y,7,3)&&y>=2003)return'海の日'; if(m===8&&dd===11&&y>=2016)return'山の日';
+  if(m===9&&dd===nthMonday(y,9,3))return'敬老の日'; if(m===9&&dd===shubun(y))return'秋分の日';
+  if(m===10&&dd===nthMonday(y,10,2))return'スポーツの日'; if(m===11&&dd===3)return'文化の日'; if(m===11&&dd===23)return'勤労感謝の日';
+  return null; }
+function isPrimary(d){ return primaryHoliday(d)!==null; }
+function isSubstitute(d){ if(isPrimary(d))return false; let p=addDays(d,-1); while(isPrimary(p)){ if(p.getDay()===0)return true; p=addDays(p,-1);} return false; }
+function isCitizens(d){ if(isPrimary(d))return false; return isPrimary(addDays(d,-1))&&isPrimary(addDays(d,1)); }
+function isHolidayJP(d){ return isPrimary(d)||isSubstitute(d)||isCitizens(d); }
+
+/* ===== 区分判定 ===== */
+function isDayOff(d){ const w=d.getDay(); return w===0||w===6||isHolidayJP(d); }
+function getDayPattern(d){
+  const dow=d.getDay(), hol=isHolidayJP(d);
+  const service=(dow>=1&&dow<=5&&!hol)?'weekday':'holiday';
+  const next=addDays(d,1);
+  const premium=(dow===6)||isHolidayJP(next)||(hol&&isDayOff(next));
+  const stayGuarantee=premium?10:12;
+  let code; if(service==='weekday')code=stayGuarantee===12?'A':'B'; else code=stayGuarantee===10?'C':'D';
+  return {code,service,stayGuarantee};
+}
+const CODE_NAME={A:'平日',B:'祝前平日',C:'土・祝前祝日',D:'日・祝'};
+
+/* ===== 最安エンジン ===== */
+const RANK_PRICES={
+  A:{short:6000,rest:7800,midnight_rest:8800,stay:13800,ext:1400},
+  B:{short:5800,rest:7200,midnight_rest:8200,stay:12800,ext:1300},
+  C:{short:5800,rest:6980,midnight_rest:7980,stay:12800,ext:1300},
+  D:{short:5700,rest:6980,midnight_rest:7980,stay:11800,ext:1300},
+  E:{short:5600,rest:6980,midnight_rest:7980,stay:12800,ext:1300},
+  F:{short:5600,rest:6700,midnight_rest:7800,stay:11200,ext:1100},
+  G:{short:4980,rest:5980,midnight_rest:6980,stay:10800,ext:1100},
+  H:{short:4980,rest:5980,midnight_rest:6980,stay:9980,ext:1100},
+  I:{short:4980,rest:5680,midnight_rest:6800,stay:8980,ext:1000}
+};
+const H=60,DAY=24*H,SLOT=30,BIZ_START=5*H+55,REST_END=(24+2)*H,STAY_LATEST=(24+6)*H;
+const SERVICE_PARTS={weekday:[[1,6*H,18*H],[2,10*H,20*H],[3,14*H,23*H]],holiday:[[1,6*H,16*H],[2,10*H,19*H],[3,14*H,22*H]]};
+const STAY_PARTS={12:[[1,18*H,(24+12)*H],[2,22*H,(24+14)*H]],10:[[1,19*H,(24+10)*H],[2,22*H,(24+12)*H]]};
+const REST_PLAIN={weekday:5,holiday:4};
+function buildDayPlans(p,pat,i){ const sh=i*DAY,o=[];
+  o.push({type:'short',label:'ショート',winStart:6*H+sh,winEnd:(24+2)*H+sh,price:p.short,coverFromIn:90,coverCap:REST_END+sh,firstOnly:true,code:pat.code});
+  o.push({type:'midnight_rest',label:'深夜休憩',winStart:23*H+sh,winEnd:(24+6)*H+sh,price:p.midnight_rest,coverFromIn:180,firstOnly:true,wholeStayOnly:true,code:pat.code});
+  for(const [n,s,e] of SERVICE_PARTS[pat.service]) o.push({type:'service',label:'サービスタイム'+n+'部',winStart:s+sh,winEnd:e+sh,price:p.rest,coverTo:e+sh,code:pat.code});
+  o.push({type:'rest',label:'休憩',winStart:6*H+sh,winEnd:(24+2)*H+sh,price:p.rest,coverFromIn:REST_PLAIN[pat.service]*H,coverCap:REST_END+sh,code:pat.code});
+  for(const [n,s,e] of STAY_PARTS[pat.stayGuarantee]) o.push({type:'stay',label:'宿泊'+n+'部',winStart:s+sh,winEnd:STAY_LATEST+sh,price:p.stay,coverTo:e+sh,code:pat.code});
+  return o; }
+function simulate(rank,checkInDate,hours){
+  const p=RANK_PRICES[rank];
+  const inAbs=checkInDate.getHours()*H+checkInDate.getMinutes();
+  const outAbs=inAbs+hours*H, N=Math.round((outAbs-inAbs)/SLOT), INF=Infinity;
+  const bizIdx=t=>Math.floor((t-BIZ_START)/DAY);
+  let plans=[];
+  for(let i=bizIdx(inAbs);i<=bizIdx(outAbs-1);i++){ plans=plans.concat(buildDayPlans(p,getDayPattern(addDays(checkInDate,i)),i)); }
+  const dp0=Array(N+1).fill(INF),dp1=Array(N+1).fill(INF),c0=Array(N+1).fill(null),c1=Array(N+1).fill(null);
+  dp0[N]=0; dp1[N]=INF;
+  for(let k=N-1;k>=0;k--){ const t=inAbs+k*SLOT;
+    if(dp0[k+1]+p.ext<dp0[k]){dp0[k]=dp0[k+1]+p.ext;c0[k]={kind:'ext',from:k+1,fs:0};}
+    if(dp1[k+1]+p.ext<dp1[k]){dp1[k]=dp1[k+1]+p.ext;c1[k]={kind:'ext',from:k+1,fs:1};}
+    for(const pl of plans){ if(pl.firstOnly&&k!==0)continue; if(t<pl.winStart||t>=pl.winEnd)continue;
+      let ce=pl.coverTo!=null?pl.coverTo:(t+pl.coverFromIn); if(pl.coverCap!=null)ce=Math.min(ce,pl.coverCap); if(ce<=t)continue;
+      let j=k; while(j<N&&(inAbs+j*SLOT)<ce)j++; if(j===k)continue; if(pl.wholeStayOnly&&j!==N)continue;
+      const cost=pl.price+dp0[j];
+      if(cost<dp0[k]){dp0[k]=cost;c0[k]={kind:'plan',pl,from:j,fs:0};}
+      if(cost<dp1[k]){dp1[k]=cost;c1[k]={kind:'plan',pl,from:j,fs:0};}
+    }
+  }
+  if(!isFinite(dp1[0]))return{price:null,plan:'(該当なし)',breakdown:[]};
+  const segs=[]; let k=0,st=1,seen=false;
+  while(k<N){ const step=st===1?c1[k]:c0[k];
+    if(step.kind==='ext')segs.push({ext:true,pre:!seen}); else{segs.push({label:step.pl.label,type:step.pl.type,code:step.pl.code});seen=true;}
+    st=step.fs; k=step.from; }
+  const labels=[],bd=[]; let m=0;
+  while(m<segs.length){ if(segs[m].ext){ let u=0; const pre=segs[m].pre; while(m<segs.length&&segs[m].ext){u++;m++;} labels.push((pre?'前延長':'延長')+u+'本'); bd.push({item:(pre?'前延長':'延長')+'(30分)',unit:p.ext,qty:u,subtotal:p.ext*u}); }
+    else{ const s=segs[m]; const unit=s.type==='short'?p.short:s.type==='midnight_rest'?p.midnight_rest:s.type==='stay'?p.stay:p.rest; labels.push(s.label); bd.push({item:s.label,unit,qty:1,subtotal:unit,mode:s.code}); m++; } }
+  return {price:dp1[0],plan:labels.join(' + '),breakdown:bd};
+}
+function simulateByBusinessDay(rank,businessDate,startClock,hours){
+  const base=new Date(businessDate.getFullYear(),businessDate.getMonth(),businessDate.getDate(),0,0,0,0);
+  return simulate(rank,new Date(base.getTime()+Math.round(startClock*60)*60000),hours);
+}
+
+/* ===== UI ===== */
+const DOW=['日','月','火','水','木','金','土'];
+function fmtClock(v){ if(v<24){ const h=Math.floor(v),m=v%1?'30':'00'; return ('0'+h).slice(-2)+':'+m; }
+  const h2=Math.floor(v-24),m=v%1?'30':'00'; return v+':00表記（翌'+('0'+h2).slice(-2)+':'+m+'）'; }
+const timeSel=document.getElementById('time');
+for(let v=6;v<=29.5;v+=0.5){ const o=document.createElement('option'); o.value=v; o.textContent=fmtClock(v); if(v===18)o.selected=true; timeSel.appendChild(o); }
+const rankSel=document.getElementById('rank');
+for(const r of Object.keys(RANK_PRICES)){ const o=document.createElement('option'); o.value=r; o.textContent='ランク'+r; rankSel.appendChild(o); }
+const hoursSel=document.getElementById('hours');
+for(let v=0.5;v<=24;v+=0.5){ const o=document.createElement('option'); o.value=v; o.textContent=v+'時間'; if(v===14)o.selected=true; hoursSel.appendChild(o); }
+document.getElementById('date').value='2026-06-07';
+
+document.getElementById('go').addEventListener('click',()=>{
+  const ds=document.getElementById('date').value; if(!ds){ alert('日付を選んでください'); return; }
+  const [y,mo,d]=ds.split('-').map(Number); const bdate=new Date(y,mo-1,d);
+  const sc=parseFloat(timeSel.value), rank=rankSel.value, hours=parseFloat(hoursSel.value);
+  const r=simulateByBusinessDay(rank,bdate,sc,hours);
+  const pat=getDayPattern(bdate);
+  document.getElementById('applied').textContent=
+    '適用: '+y+'/'+mo+'/'+d+'('+DOW[bdate.getDay()]+')'+(isHolidayJP(bdate)?'・祝':'')+' → 区分'+pat.code+'（'+CODE_NAME[pat.code]+'） / サービス'+(pat.service==='weekday'?'平日(長)':'土日祝(短)')+' / 宿泊'+pat.stayGuarantee+'時間保証';
+  document.getElementById('price').textContent='¥'+(r.price!=null?r.price.toLocaleString():'-');
+  document.getElementById('plan').textContent=r.plan;
+  const tb=document.querySelector('#bd tbody'); tb.innerHTML='';
+  for(const b of r.breakdown){ const tr=document.createElement('tr');
+    tr.innerHTML='<td>'+b.item+(b.mode?'<span class="mode">'+b.mode+'モード</span>':'')+'</td><td class="num">¥'+b.unit.toLocaleString()+'</td><td class="num">'+b.qty+'</td><td class="num">¥'+b.subtotal.toLocaleString()+'</td>'; tb.appendChild(tr); }
+  document.getElementById('result').style.display='block';
+  document.getElementById('bdwrap').style.display=r.breakdown.length?'block':'none';
+});
+</script>
+</body>
+</html>
