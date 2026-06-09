@@ -154,8 +154,9 @@ function simulateByBusinessDay(rank,businessDate,startClock,hours){
 
 /* ===== UI ===== */
 const DOW=['日','月','火','水','木','金','土'];
-function fmtClock(v){ if(v<24){ const h=Math.floor(v),m=v%1?'30':'00'; return ('0'+h).slice(-2)+':'+m; }
-  const h2=Math.floor(v-24),m=v%1?'30':'00'; return v+':00表記（翌'+('0'+h2).slice(-2)+':'+m+'）'; }
+function fmtClock(v){ const h=Math.floor(v), m=v%1?'30':'00';
+  if(v<24){ return ('0'+h).slice(-2)+':'+m; }
+  return h+':'+m+'（翌'+('0'+(h-24)).slice(-2)+':'+m+'）'; }
 const timeSel=document.getElementById('time');
 for(let v=6;v<=29.5;v+=0.5){ const o=document.createElement('option'); o.value=v; o.textContent=fmtClock(v); if(v===18)o.selected=true; timeSel.appendChild(o); }
 const rankSel=document.getElementById('rank');
